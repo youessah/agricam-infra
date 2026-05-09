@@ -1,18 +1,13 @@
-# Terraform - fichiers sensibles
+# Fichiers Terraform sensibles
 *.tfstate
 *.tfstate.backup
 *.tfvars
-.terraform/
-.terraform.lock.hcl
-crash.log
+!exemple.tfvars
 
-# Ansible - fichiers sensibles
-*.retry
-inventory/
-vault_pass.txt
+# Clés SSH
 *.pem
 *.key
 
-# Général
-.env
-*.log
+# Dossier Terraform
+.terraform/
+.terraform.lock.hcl
