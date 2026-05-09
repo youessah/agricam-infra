@@ -64,6 +64,7 @@ resource "aws_security_group" "agricam_sg" {
     to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
+    description = "HTTP public"
   }
 
   ingress {
@@ -71,6 +72,7 @@ resource "aws_security_group" "agricam_sg" {
     to_port     = 443
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
+    description = "HTTPS public"
   }
 
   ingress {
@@ -78,6 +80,7 @@ resource "aws_security_group" "agricam_sg" {
     to_port     = 22
     protocol    = "tcp"
     cidr_blocks = [var.ip_admin]
+    description = "SSH admin uniquement"
   }
 
   egress {
@@ -85,6 +88,7 @@ resource "aws_security_group" "agricam_sg" {
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
+    description = "Trafic sortant autorise"
   }
 }
 resource "aws_key_pair" "agricam_keypair" {
@@ -97,6 +101,19 @@ resource "aws_instance" "agricam_serveur" {
   subnet_id              = aws_subnet.agricam_subnet.id
   key_name               = aws_key_pair.agricam_keypair.key_name
   vpc_security_group_ids = [aws_security_group.agricam_sg.id]
+
+  monitoring    = true
+  ebs_optimized = true
+
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 1
+  }
+
+  root_block_device {
+    encrypted = true
+  }
 
   user_data = <<-SCRIPT
     #!/bin/bash
@@ -123,6 +140,51 @@ resource "aws_s3_bucket" "agricam_stockage" {
 
 resource "aws_s3_bucket_public_access_block" "agricam_s3_pab" {
   bucket                  = aws_s3_bucket.agricam_stockage.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "agricam_chiffrement" {
+  bucket = aws_s3_bucket.agricam_stockage.id
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_versioning" "agricam_versioning" {
+  bucket = aws_s3_bucket.agricam_stockage.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket" "logs_cloudtrail" {
+  bucket = "agricam-cloudtrail-logs-${var.environnement}-audrey"
+  tags   = { Projet = "AgriCam", Type = "Logs" }
+}
+
+resource "aws_cloudtrail" "agricam_audit" {
+  name                          = "agricam-trail-${var.environnement}"
+  s3_bucket_name                = aws_s3_bucket.logs_cloudtrail.id
+  is_multi_region_trail         = true
+  enable_log_file_validation    = true
+  include_global_service_events = true
+  tags = { Projet = "AgriCam", Type = "Securite" }
+}
+
+resource "aws_s3_bucket_versioning" "logs_versioning" {
+  bucket = aws_s3_bucket.logs_cloudtrail.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "logs_pab" {
+  bucket                  = aws_s3_bucket.logs_cloudtrail.id
   block_public_acls       = true
   block_public_policy     = true
   ignore_public_acls      = true
